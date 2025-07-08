@@ -707,6 +707,24 @@ class ExperimentServer(ZMQServer):
         logger.info('local filepath: %s'%h5_filepath)
         return app.queue.process_request(h5_filepath)
 
+class RealTimeServer(ExperimentServer):
+	def __init__(self, port, BLACS):
+		self.objects = BLACS.connection_table.get_attached_devices()
+		super().__init__(port=port)
+		self._original_handler = super().handler
+
+	def handler(self, request_data):
+		#The object is either an h5_filepath, in wich case we compile and run like the original experiment server would
+		last_three = request_data[-3:]
+		if last_three == ".h5":
+			return self._original_handler(request_data)
+		#The object is the string "hello" in which case we response back
+		if request_data == "hello":
+			return "hello from BLACS!"
+		#Or, we have been passed an object in the connection table. If this is the case, we return a proxy to the device. Essentially a "server side" object.
+		self.device = BLACS.tablist["request_data"]
+		return self.device
+		#Lastly, we could have been requested to send the connection table. If this is the case, we return the connection table object.  
 
 if __name__ == '__main__':
     if 'tracelog' in sys.argv:
@@ -752,8 +770,8 @@ if __name__ == '__main__':
     port = int(exp_config.get('ports','BLACS'))
 
     # Start experiment server
-    splash.update_text('starting experiment server')
-    experiment_server = ExperimentServer(port)
+    # splash.update_text('starting experiment server')
+    # experiment_server = ExperimentServer(port)
 
     # Create Connection Table object
     splash.update_text('loading connection table')
@@ -770,6 +788,10 @@ if __name__ == '__main__':
     qapplication.setAttribute(Qt.AA_DontShowIconsInMenus, False)
     logger.info('QApplication instantiated')
     app = BLACS(qapplication)
+
+    splash.update_text('starting experiment server')
+    logger.info('starting experiment server')
+    experiment_server = RealTimeServer(port, app)
 
     logger.info('BLACS instantiated')
     splash.hide()
